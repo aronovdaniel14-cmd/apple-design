@@ -1,0 +1,14 @@
+{
+  "name": "apple-design",
+  "version": "1.0.0",
+  "description": "A Claude skill for fast, keynote-style product and launch videos as HTML artifacts, exportable to MP4.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "export": "node scripts/export.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "1.49.1"
+  },
+  "license": "MIT"
+}
