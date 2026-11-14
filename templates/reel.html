@@ -1,0 +1,416 @@
+<title>Nimbus One Reel</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+/* Apple Design video player. One fixed-size stage (native video resolution) scaled to fit.
+   Single dark look on purpose: the chrome around the video stays dark in every theme. */
+:root {
+  color-scheme: dark;
+  --page: #0a0a0b;
+  --chrome: #161618;
+  --chrome-line: #2a2a2e;
+  --chrome-fg: #e8e8ed;
+  --chrome-muted: #8e8e93;
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+html, body { height: 100%; }
+body {
+  background: var(--page); color: var(--chrome-fg); font-family: var(--font);
+  display: flex; flex-direction: column; overflow: hidden;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+#viewport { flex: 1; min-height: 0; position: relative; display: grid; place-items: center; padding-block: 16px; }
+#frame { position: relative; box-shadow: 0 30px 80px rgba(0,0,0,.6); border-radius: 10px; overflow: hidden; }
+#stage {
+  position: absolute; top: 0; left: 0; transform-origin: 0 0; overflow: hidden;
+  background: var(--bg); color: var(--fg); font-family: var(--font);
+  -webkit-font-smoothing: antialiased; font-feature-settings: "ss01", "cv11";
+}
+/* Video palettes (set via VIDEO.theme) */
+#stage.dark  { --bg: #000; --fg: #f5f5f7; --muted: #86868b; --tile: rgba(255,255,255,.06); --tile-line: rgba(255,255,255,.1); }
+#stage.light { --bg: #fbfbfd; --fg: #1d1d1f; --muted: #6e6e73; --tile: rgba(0,0,0,.04); --tile-line: rgba(0,0,0,.08); }
+
+/* Controls */
+#controls {
+  flex: none; display: flex; align-items: center; gap: 12px; padding-block: 10px calc(12px + env(safe-area-inset-bottom, 0px));
+  font-size: 13px; color: var(--chrome-muted); font-variant-numeric: tabular-nums;
+}
+#controls button, #controls select {
+  font: inherit; color: var(--chrome-fg); background: var(--chrome); border: 1px solid var(--chrome-line);
+  border-radius: 8px; height: 32px; padding: 0 12px; cursor: pointer;
+}
+#controls button:focus-visible, #controls select:focus-visible, #scrub:focus-visible { outline: 2px solid var(--chrome-fg); outline-offset: 2px; }
+#play { min-width: 72px; }
+#scrub { flex: 1; min-width: 60px; accent-color: var(--chrome-fg); }
+#time { min-width: 86px; text-align: right; }
+@media (max-width: 520px) { #fs, #time { display: none; } }
+#bigplay {
+  position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.25);
+  border: 0; cursor: pointer; color: #fff;
+}
+#bigplay span {
+  width: 76px; height: 76px; border-radius: 50%; background: rgba(255,255,255,.16);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); display: grid; place-items: center;
+}
+#bigplay svg { width: 28px; height: 28px; margin-left: 4px; fill: #fff; }
+
+/* Export mode: stage at 1:1 in the top-left, nothing else */
+body.export { padding: 0; }
+body.export #controls, body.export #bigplay { display: none; }
+body.export #viewport { padding: 0; display: block; }
+body.export #frame { box-shadow: none; border-radius: 0; }
+
+/* ---------- Video styles (all sizes in stage pixels; --u = 1% of the short side) ---------- */
+.bg { position: absolute; inset: -20%; pointer-events: none; }
+.scene { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; will-change: opacity, filter; }
+.cam { position: relative; display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 2.4); width: 86%; will-change: transform; }
+.w { display: inline-block; white-space: pre; will-change: transform, opacity, filter; }
+.eyebrow { font-size: calc(var(--u) * 3.2); font-weight: 600; color: var(--muted); letter-spacing: -.01em; }
+.display { margin: 0; font-size: calc(var(--u) * 10.5); font-weight: 700; letter-spacing: -.045em; line-height: 1.02; text-wrap: balance; }
+.huge { margin: 0; font-size: calc(var(--u) * 19); font-weight: 800; letter-spacing: -.055em; line-height: .95; }
+.sub { margin: 0; font-size: calc(var(--u) * 3.6); font-weight: 500; color: var(--muted); letter-spacing: -.015em; max-width: 30ch; text-wrap: balance; line-height: 1.25; }
+.grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; padding-bottom: .08em; }
+.word-stack { position: relative; width: 100%; height: calc(var(--u) * 24); }
+.word-stack .big { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; }
+.stat-num { font-size: calc(var(--u) * 26); font-weight: 800; letter-spacing: -.06em; line-height: .9; font-variant-numeric: tabular-nums; }
+.stat-num small { font-size: .38em; letter-spacing: -.03em; margin-left: .08em; }
+.tiles { display: grid; gap: calc(var(--u) * 2); width: 100%; grid-template-columns: repeat(var(--cols), 1fr); text-align: left; }
+.tile { background: var(--tile); border: 1px solid var(--tile-line); border-radius: calc(var(--u) * 3); padding: calc(var(--u) * 3.4); display: flex; flex-direction: column; gap: calc(var(--u) * 1); }
+.tile .ic { width: calc(var(--u) * 5.6); height: calc(var(--u) * 5.6); border-radius: 30%; background: var(--grad); display: grid; place-items: center; font-size: calc(var(--u) * 3); font-weight: 700; color: #fff; margin-bottom: calc(var(--u) * 1.2); }
+.tile h3 { margin: 0; font-size: calc(var(--u) * 3.6); letter-spacing: -.025em; font-weight: 700; }
+.tile p { margin: 0; font-size: calc(var(--u) * 2.5); color: var(--muted); line-height: 1.35; }
+.split { display: grid; grid-template-columns: 1.1fr 1fr; align-items: center; gap: calc(var(--u) * 6); width: 100%; text-align: left; }
+.split .copy { display: flex; flex-direction: column; gap: calc(var(--u) * 2.2); align-items: flex-start; }
+.split .display { font-size: calc(var(--u) * 8); }
+.split .sub { max-width: 24ch; }
+#stage.portrait .split { grid-template-columns: 1fr; text-align: center; gap: calc(var(--u) * 5); }
+#stage.portrait .split .copy { align-items: center; }
+.media { display: grid; place-items: center; }
+.media img.photo { max-width: 100%; max-height: calc(var(--u) * 62); border-radius: calc(var(--u) * 2.5); object-fit: cover; }
+.lines { display: flex; flex-direction: column; gap: .05em; font-size: calc(var(--u) * 9.5); font-weight: 700; letter-spacing: -.045em; line-height: 1.04; }
+.lines .ln { display: block; clip-path: inset(0 0 100% 0); }
+.cta { display: inline-flex; align-items: center; height: calc(var(--u) * 6.6); padding: 0 calc(var(--u) * 3.6); border-radius: 999px; background: var(--accent); color: #fff; font-size: calc(var(--u) * 2.8); font-weight: 600; letter-spacing: -.01em; }
+.foot { font-size: calc(var(--u) * 2.2); color: var(--muted); }
+
+/* Devices: drawn in CSS so a reel works without any product photos */
+.device { position: relative; flex: none; }
+.device .screen { position: absolute; overflow: hidden; background: var(--wall); background-size: cover; background-position: center; }
+.device .screen img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.device::after { /* light sweep, driven by --sweep (-1 .. 1) */
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.28) 50%, transparent 65%);
+  transform: translateX(calc(var(--sweep, -2) * 100%)); mix-blend-mode: screen;
+}
+.device { overflow: hidden; }
+.phone { width: calc(var(--u) * 27); height: calc(var(--u) * 56); border-radius: calc(var(--u) * 4.4); background: linear-gradient(145deg, #5a5a60, #1b1b1e 40%, #3a3a3f); padding: calc(var(--u) * .7); box-shadow: 0 calc(var(--u)*4) calc(var(--u)*10) rgba(0,0,0,.45); }
+.phone .screen { inset: calc(var(--u) * .7); border-radius: calc(var(--u) * 3.8); }
+.phone .island { position: absolute; top: calc(var(--u) * 2); left: 50%; width: calc(var(--u) * 8); height: calc(var(--u) * 2.3); margin-left: calc(var(--u) * -4); background: #000; border-radius: 99px; z-index: 2; }
+.tablet { width: calc(var(--u) * 62); height: calc(var(--u) * 45); border-radius: calc(var(--u) * 3); background: linear-gradient(145deg, #5a5a60, #1b1b1e 40%, #3a3a3f); box-shadow: 0 calc(var(--u)*4) calc(var(--u)*10) rgba(0,0,0,.45); }
+.tablet .screen { inset: calc(var(--u) * 1.4); border-radius: calc(var(--u) * 1.8); }
+.laptop { width: calc(var(--u) * 78); height: calc(var(--u) * 52); overflow: visible; }
+.laptop .lid { position: absolute; left: 6%; right: 6%; top: 0; height: 90%; border-radius: calc(var(--u) * 2) calc(var(--u) * 2) 0 0; background: #1b1b1e; box-shadow: 0 calc(var(--u)*4) calc(var(--u)*10) rgba(0,0,0,.45); overflow: hidden; }
+.laptop .screen { inset: calc(var(--u) * 1.2); border-radius: calc(var(--u) * .6); }
+.laptop .base { position: absolute; left: 0; right: 0; bottom: 0; height: 10%; border-radius: 0 0 calc(var(--u) * 3) calc(var(--u) * 3); background: linear-gradient(#cfcfd4, #8a8a90); }
+.watch { width: calc(var(--u) * 30); height: calc(var(--u) * 36); border-radius: calc(var(--u) * 8); background: linear-gradient(145deg, #6a6a70, #1b1b1e 45%, #3a3a3f); box-shadow: 0 calc(var(--u)*4) calc(var(--u)*10) rgba(0,0,0,.45); }
+.watch .screen { inset: calc(var(--u) * 1.6); border-radius: calc(var(--u) * 6.4); }
+@media (prefers-reduced-motion: reduce) { #bigplay span { backdrop-filter: none; } }
+</style>
+
+<div id="viewport">
+  <div id="frame">
+    <div id="stage"></div>
+    <button id="bigplay" aria-label="Play video"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z"/></svg></span></button>
+  </div>
+</div>
+<div id="controls">
+  <button id="play" aria-label="Play">Play</button>
+  <input id="scrub" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek">
+  <span id="time">0:00 / 0:00</span>
+  <select id="aspect" aria-label="Aspect ratio">
+    <option value="16:9">16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option><option value="4:5">4:5</option>
+  </select>
+  <button id="fs">Full screen</button>
+</div>
+
+<script>
+/* =====================================================================
+   EDIT THIS OBJECT. Everything else is the engine.
+   Scene types: title, words, reveal, stat, features, split, statement, end
+   Text: wrap a word in *asterisks* to give it the accent gradient.
+   ===================================================================== */
+const VIDEO = {
+  title: "Nimbus One",
+  aspect: "16:9",          // 16:9 | 9:16 | 1:1 | 4:5
+  fps: 30,
+  theme: "dark",           // dark | light
+  accent: "#2f7bff",
+  accent2: "#b44dff",
+  poster: null,            // seconds to show before play; null = middle of the first reveal scene
+  loop: false,
+  scenes: [
+    { type: "title", dur: 3.2, text: "Everything you love. *Now lighter.*" },
+    { type: "words", dur: 2.8, words: ["Thinner.", "Brighter.", "*Faster.*"] },
+    { type: "reveal", dur: 4.6, eyebrow: "Introducing", name: "Nimbus One", tagline: "The thinnest phone we have ever made.", device: "phone" },
+    { type: "stat", dur: 3.2, value: 5.1, decimals: 1, suffix: "mm", label: "From edge to edge. Thinner than a pencil." },
+    { type: "features", dur: 4.2, items: [
+      { icon: "38", title: "All-day battery", text: "Up to 38 hours of video playback on one charge." },
+      { icon: "48", title: "Light-field camera", text: "A 48MP sensor that lets you refocus after the shot." },
+      { icon: "Ti", title: "Titanium frame", text: "Aerospace-grade titanium, 19 grams lighter." }
+    ]},
+    { type: "split", dur: 4.2, eyebrow: "Display", title: "Brighter than *the sun*.", text: "3,000 nits peak. Readable at noon, gentle at midnight.", device: "phone" },
+    { type: "statement", dur: 3.6, text: "Small enough to forget.\n*Powerful enough to remember.*" },
+    { type: "end", dur: 3.8, name: "Nimbus One", tagline: "Available this spring.", cta: "Pre-order now", foot: "nimbus.example" }
+  ]
+};
+
+/* ============================== ENGINE ============================== */
+(() => {
+const SIZES = { "16:9": [1920, 1080], "9:16": [1080, 1920], "1:1": [1080, 1080], "4:5": [1080, 1350] };
+const XF = 0.55;                                       // crossfade between scenes, seconds
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const lerp = (a, b, p) => a + (b - a) * p;
+const E = {
+  out: p => 1 - Math.pow(1 - p, 4),
+  expo: p => (p >= 1 ? 1 : 1 - Math.pow(2, -10 * p)),
+  inOut: p => (p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2),
+};
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const rich = s => esc(s).replace(/\*([^*]+)\*/g, '<span class="grad">$1</span>');
+const wordsHTML = s => {                               // split into animatable words, keeping *gradient* runs
+  const out = []; let grad = false;
+  String(s ?? "").split(/(\s+)/).forEach(tok => {
+    if (!tok) return;
+    if (/^\s+$/.test(tok)) { out.push(tok); return; }
+    let t = tok, g0 = grad;
+    if (t.startsWith("*")) { t = t.slice(1); g0 = grad = true; }
+    let closes = false;
+    if (t.endsWith("*")) { t = t.slice(0, -1); closes = true; }
+    out.push(`<span class="w${g0 ? " grad" : ""}">${esc(t)}</span>`);
+    if (closes) grad = false;
+  });
+  return out.join("");
+};
+function fx(el, p, { y = 40, x = 0, blur = 10, scale = 1 } = {}) {
+  if (!el) return;
+  el.style.opacity = p;
+  el.style.transform = `translate(${lerp(x, 0, p)}px, ${lerp(y, 0, p)}px) scale(${lerp(scale, 1, p)})`;
+  el.style.filter = blur && p < 1 ? `blur(${lerp(blur, 0, p)}px)` : "none";
+}
+function deviceHTML(kind, screen) {
+  const scr = `<div class="screen">${screen ? `<img src="${esc(screen)}" alt="">` : ""}</div>`;
+  if (kind === "laptop") return `<div class="device laptop"><div class="lid">${scr}</div><div class="base"></div></div>`;
+  if (kind === "tablet") return `<div class="device tablet">${scr}</div>`;
+  if (kind === "watch") return `<div class="device watch">${scr}</div>`;
+  return `<div class="device phone"><div class="island"></div>${scr}</div>`;
+}
+function mediaHTML(s) {
+  if (s.image) return `<img class="photo" src="${esc(s.image)}" alt="">`;
+  if (s.device === "none") return "";
+  return deviceHTML(s.device || "phone", s.screen);
+}
+const div = (cls, html) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = html; return d; };
+const $ = (root, q) => root.querySelector(q);
+const $$ = (root, q) => [...root.querySelectorAll(q)];
+
+/* Each builder returns { el, update(t, d) } with t = seconds into the scene. */
+const SCENES = {
+  title(s) {
+    const el = div("cam", `${s.eyebrow ? `<div class="eyebrow">${esc(s.eyebrow)}</div>` : ""}<h1 class="display">${wordsHTML(s.text)}</h1>${s.sub ? `<p class="sub">${rich(s.sub)}</p>` : ""}`);
+    const ws = $$(el, ".w"), n = ws.length;
+    return { el, update(t) {
+      fx($(el, ".eyebrow"), E.out(seg(t, 0, .8)), { y: 16 });
+      ws.forEach((w, i) => fx(w, E.out(seg(t, .15 + i * .09, 1.05 + i * .09)), { y: 34, blur: 14 }));
+      fx($(el, ".sub"), E.out(seg(t, .5 + n * .09, 1.4 + n * .09)), { y: 20 });
+    } };
+  },
+  words(s) {
+    const list = s.words || [];
+    const el = div("cam", `<div class="word-stack">${list.map(w => `<h2 class="huge big">${rich(w)}</h2>`).join("")}</div>`);
+    const ws = $$(el, ".big");
+    return { el, update(t, d) {
+      const slot = d / Math.max(1, ws.length);
+      ws.forEach((w, i) => {
+        const u = t - i * slot, last = i === ws.length - 1;
+        const pin = E.out(seg(u, 0, .38)), pout = last ? 0 : E.inOut(seg(u, slot - .22, slot + .05));
+        w.style.opacity = pin * (1 - pout);
+        w.style.transform = `scale(${lerp(1.14, 1, pin) * lerp(1, .94, pout)})`;
+        w.style.filter = `blur(${lerp(14, 0, pin) + pout * 10}px)`;
+      });
+    } };
+  },
+  reveal(s) {
+    const el = div("cam", `${s.eyebrow ? `<div class="eyebrow">${esc(s.eyebrow)}</div>` : ""}<div class="media">${mediaHTML(s)}</div><h1 class="display grad">${esc(s.name)}</h1>${s.tagline ? `<p class="sub">${rich(s.tagline)}</p>` : ""}`);
+    el.style.gap = "calc(var(--u) * 2)";
+    el.style.setProperty("--u", `calc(${Math.min(W, H) / 100}px * .86)`);   // reveal shot runs slightly smaller so it all fits
+    $(el, ".display").style.fontSize = "calc(var(--u) * 8.5)";
+    return { el, update(t) {
+      fx($(el, ".eyebrow"), E.out(seg(t, 0, .9)), { y: 14, blur: 6 });
+      fx($(el, ".media"), E.expo(seg(t, .35, 2.1)), { y: 260, scale: .86, blur: 0 });
+      const dev = $(el, ".device"); if (dev) dev.style.setProperty("--sweep", lerp(-1.6, 1.6, E.inOut(seg(t, 1.3, 2.8))));
+      fx($(el, ".display"), E.out(seg(t, 1.4, 2.4)), { y: 30, blur: 12 });
+      fx($(el, ".sub"), E.out(seg(t, 1.9, 2.9)), { y: 20 });
+    } };
+  },
+  stat(s) {
+    const el = div("cam", `${s.eyebrow ? `<div class="eyebrow">${esc(s.eyebrow)}</div>` : ""}<div class="stat-num grad"><span class="n"></span><small>${esc(s.suffix)}</small></div>${s.label ? `<p class="sub">${rich(s.label)}</p>` : ""}`);
+    const n = $(el, ".n"), dec = s.decimals || 0, from = s.from ?? 0;
+    const fmt = v => (s.prefix || "") + v.toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    return { el, update(t) {
+      fx($(el, ".eyebrow"), E.out(seg(t, 0, .7)), { y: 14 });
+      const p = seg(t, .2, 1.9);
+      fx($(el, ".stat-num"), E.out(seg(t, .1, .9)), { y: 30, scale: .92, blur: 8 });
+      n.textContent = fmt(lerp(from, s.value, E.out(p)));
+      fx($(el, ".sub"), E.out(seg(t, 1.1, 2)), { y: 18 });
+    } };
+  },
+  features(s) {
+    const items = s.items || [];
+    const el = div("cam", `${s.title ? `<h2 class="display" style="font-size:calc(var(--u)*6.4)">${rich(s.title)}</h2>` : ""}<div class="tiles">${items.map(it => `<div class="tile">${it.icon ? `<div class="ic">${esc(it.icon)}</div>` : ""}<h3>${rich(it.title)}</h3>${it.text ? `<p>${rich(it.text)}</p>` : ""}</div>`).join("")}</div>`);
+    const tiles = $$(el, ".tile");
+    return { el, cols: items.length, update(t) {
+      fx($(el, ".display"), E.out(seg(t, 0, .8)), { y: 24 });
+      tiles.forEach((tl, i) => fx(tl, E.out(seg(t, .25 + i * .14, 1.15 + i * .14)), { y: 60, blur: 8, scale: .96 }));
+    } };
+  },
+  split(s) {
+    const media = `<div class="media">${mediaHTML(s)}</div>`;
+    const copy = `<div class="copy">${s.eyebrow ? `<div class="eyebrow">${esc(s.eyebrow)}</div>` : ""}<h2 class="display">${rich(s.title)}</h2>${s.text ? `<p class="sub">${rich(s.text)}</p>` : ""}</div>`;
+    const el = div("cam", `<div class="split">${s.flip ? media + copy : copy + media}</div>`);
+    return { el, update(t, d) {
+      fx($(el, ".eyebrow"), E.out(seg(t, 0, .7)), { y: 14 });
+      fx($(el, ".copy .display"), E.out(seg(t, .15, 1.1)), { y: 30, blur: 10 });
+      fx($(el, ".copy .sub"), E.out(seg(t, .5, 1.4)), { y: 20 });
+      fx($(el, ".media"), E.expo(seg(t, .2, 1.8)), { x: s.flip ? -160 : 160, blur: 0, scale: .94 });
+      const dev = $(el, ".device"); if (dev) dev.style.setProperty("--sweep", lerp(-1.6, 1.6, E.inOut(seg(t, .9, 2.4))));
+    } };
+  },
+  statement(s) {
+    const lines = String(s.text || "").split("\n");
+    const el = div("cam", `<div class="lines">${lines.map(l => `<span class="ln">${rich(l)}</span>`).join("")}</div>`);
+    const ls = $$(el, ".ln");
+    return { el, update(t) {
+      ls.forEach((l, i) => {
+        const p = E.out(seg(t, .1 + i * .45, 1.1 + i * .45));
+        l.style.clipPath = `inset(0 0 ${lerp(100, 0, p)}% 0)`;
+        l.style.transform = `translateY(${lerp(50, 0, p)}px)`;
+      });
+    } };
+  },
+  end(s) {
+    const el = div("cam", `${s.eyebrow ? `<div class="eyebrow">${esc(s.eyebrow)}</div>` : ""}<h1 class="display">${rich(s.name)}</h1>${s.tagline ? `<p class="sub">${rich(s.tagline)}</p>` : ""}${s.cta ? `<div class="cta">${esc(s.cta)}</div>` : ""}${s.foot ? `<div class="foot">${esc(s.foot)}</div>` : ""}`);
+    return { el, update(t) {
+      fx($(el, ".eyebrow"), E.out(seg(t, 0, .7)), { y: 14 });
+      fx($(el, ".display"), E.out(seg(t, .1, 1.1)), { y: 30, blur: 14, scale: 1.04 });
+      fx($(el, ".sub"), E.out(seg(t, .6, 1.5)), { y: 18 });
+      fx($(el, ".cta"), E.out(seg(t, 1, 1.8)), { y: 18, scale: .9 });
+      fx($(el, ".foot"), E.out(seg(t, 1.3, 2.1)), { y: 10, blur: 0 });
+    } };
+  },
+};
+
+const stage = document.getElementById("stage"), frame = document.getElementById("frame"), viewport = document.getElementById("viewport");
+let W, H, built = [], total = 0, bg;
+
+function build() {
+  [W, H] = SIZES[VIDEO.aspect] || SIZES["16:9"];
+  const u = Math.min(W, H) / 100;
+  stage.className = `${VIDEO.theme === "light" ? "light" : "dark"}${H > W ? " portrait" : ""}`;
+  stage.style.cssText = `width:${W}px;height:${H}px;--u:${u}px;--accent:${VIDEO.accent};--accent2:${VIDEO.accent2};` +
+    `--grad:linear-gradient(100deg, ${VIDEO.accent2} 0%, ${VIDEO.accent} 55%, ${VIDEO.accent} 100%);` +
+    `--wall:radial-gradient(120% 70% at 20% 10%, ${VIDEO.accent2}, transparent 60%), radial-gradient(120% 80% at 90% 90%, ${VIDEO.accent}, transparent 60%), #05050a;`;
+  stage.innerHTML = "";
+  bg = div("bg", ""); stage.appendChild(bg);
+  built = []; let start = 0;
+  VIDEO.scenes.forEach((s, i) => {
+    const maker = SCENES[s.type]; if (!maker) { console.warn("Unknown scene type", s.type); return; }
+    const sc = maker(s), wrap = div("scene", "");
+    wrap.appendChild(sc.el); stage.appendChild(wrap);
+    const tiles = $(sc.el, ".tiles");
+    if (tiles) tiles.style.setProperty("--cols", H > W ? 1 : Math.min(3, sc.cols || 3));
+    const d = Math.max(1, s.dur || 3);
+    built.push({ s, sc, wrap, start, d });
+    start += d - XF;
+  });
+  const last = built[built.length - 1];
+  total = last ? last.start + last.d : 0;
+  fit();
+}
+
+function render(t) {
+  t = clamp(t, 0, total);
+  const glow = .55 + .25 * Math.sin(t * .6);
+  bg.style.background =
+    `radial-gradient(38% 42% at ${50 + 18 * Math.sin(t * .23)}% ${62 + 8 * Math.cos(t * .31)}%, color-mix(in srgb, ${VIDEO.accent} ${Math.round(glow * 40)}%, transparent), transparent 70%),` +
+    `radial-gradient(30% 36% at ${30 + 14 * Math.cos(t * .19)}% ${30 + 10 * Math.sin(t * .27)}%, color-mix(in srgb, ${VIDEO.accent2} ${Math.round(glow * 28)}%, transparent), transparent 70%)`;
+  built.forEach((b, i) => {
+    const lt = t - b.start, on = lt >= 0 && lt <= b.d;
+    b.wrap.hidden = !on; if (!on) return;
+    const first = i === 0, last = i === built.length - 1;
+    const fin = first ? 1 : E.inOut(seg(lt, 0, XF));
+    const fout = last ? (VIDEO.loop ? 0 : E.inOut(seg(lt, b.d - .7, b.d))) : E.inOut(seg(lt, b.d - XF, b.d));
+    b.wrap.style.opacity = fin * (1 - fout);
+    b.wrap.style.filter = fout > 0 ? `blur(${fout * 12}px)` : "none";
+    b.sc.el.style.transform = `scale(${lerp(1, 1.035, lt / b.d)})`;     // slow push-in
+    b.sc.update(lt, b.d);
+  });
+}
+
+/* ---------- Player ---------- */
+let t = 0, playing = false, last = 0, exporting = false;
+const playBtn = document.getElementById("play"), bigplay = document.getElementById("bigplay");
+const scrub = document.getElementById("scrub"), timeEl = document.getElementById("time"), aspectSel = document.getElementById("aspect");
+const fmtT = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+function ui() {
+  playBtn.textContent = playing ? "Pause" : "Play"; playBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
+  bigplay.hidden = playing || exporting;
+  scrub.value = total ? Math.round(t / total * 1000) : 0;
+  timeEl.textContent = `${fmtT(t)} / ${fmtT(total)}`;
+}
+function fit() {
+  if (exporting) { stage.style.transform = "none"; frame.style.width = W + "px"; frame.style.height = H + "px"; return; }
+  const r = viewport.getBoundingClientRect();
+  const k = Math.min((r.width) / W, (r.height - 32) / H);
+  stage.style.transform = `scale(${k})`;
+  frame.style.width = W * k + "px"; frame.style.height = H * k + "px";
+}
+function tick(now) {
+  if (!playing) return;
+  t += Math.min(.1, (now - last) / 1000); last = now;
+  if (t >= total) { if (VIDEO.loop) t = 0; else { t = total; playing = false; } }
+  render(t); ui();
+  if (playing) requestAnimationFrame(tick);
+}
+function play() { if (t >= total) t = 0; playing = true; last = performance.now(); ui(); requestAnimationFrame(tick); }
+function pause() { playing = false; ui(); }
+playBtn.onclick = () => (playing ? pause() : play());
+bigplay.onclick = play;
+scrub.oninput = () => { pause(); t = scrub.value / 1000 * total; render(t); ui(); };
+aspectSel.onchange = () => { VIDEO.aspect = aspectSel.value; build(); render(t); ui(); };
+document.getElementById("fs").onclick = () => { try { document.documentElement.requestFullscreen?.().catch(() => {}); } catch (e) {} };
+document.addEventListener("keydown", e => {
+  if (e.target.closest("select, input")) return;
+  if (e.code === "Space") { e.preventDefault(); playing ? pause() : play(); }
+  if (e.code === "ArrowRight") { t = clamp(t + 1, 0, total); render(t); ui(); }
+  if (e.code === "ArrowLeft") { t = clamp(t - 1, 0, total); render(t); ui(); }
+});
+addEventListener("resize", fit);
+
+/* Hook used by scripts/export.mjs for frame-exact rendering */
+window.reel = {
+  get duration() { return total; }, get size() { return [W, H]; }, get fps() { return VIDEO.fps || 30; },
+  seek(s) { t = s; render(t); },
+  setAspect(a) { VIDEO.aspect = a; build(); render(t); },
+  setExport(on) { exporting = on; pause(); document.body.classList.toggle("export", on); fit(); ui(); },
+};
+
+aspectSel.value = VIDEO.aspect;
+build();
+const rv = built.find(b => b.s.type === "reveal");
+t = VIDEO.poster ?? (rv ? rv.start + 2.8 : Math.min(2, total));      // a finished, readable poster frame
+render(t); ui();
+if (document.fonts?.ready) document.fonts.ready.then(() => { fit(); render(t); });
+})();
+</script>
