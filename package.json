@@ -1,14 +1,17 @@
 {
   "name": "apple-design",
-  "version": "1.0.0",
-  "description": "A Claude skill for fast, keynote-style product and launch videos as HTML artifacts, exportable to MP4.",
+  "version": "2.0.0",
+  "description": "A Claude skill for Apple-style 3D product launch films: Three.js product renders, original beat-synced music, MP4 output.",
   "type": "module",
   "private": true,
   "scripts": {
-    "export": "node scripts/export.mjs"
+    "render": "node render.mjs"
   },
   "dependencies": {
-    "playwright-core": "1.49.1"
+    "@fontsource-variable/inter": "5.2.5",
+    "@fontsource-variable/inter-tight": "5.2.5",
+    "puppeteer-core": "24.10.0",
+    "three": "0.170.0"
   },
   "license": "MIT"
 }

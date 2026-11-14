@@ -1,5 +1,6 @@
 node_modules/
 *.mp4
-.reel-export-*.html
-.DS_Store
+films/*/out/
+films/*/env.json
 package-lock.json
+.DS_Store

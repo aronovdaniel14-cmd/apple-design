@@ -1,64 +1,47 @@
-# Apple Design (/apple-design)
+# Apple Design (`/apple-design`)
 
-A Claude skill for making keynote-style motion videos (product reveals, launch
-teasers, feature reels, app promos and social clips) in minutes.
+A Claude skill that makes Apple-style product launch films: a real 3D product built
+and lit in Three.js, bold cuts on the beat, giant kinetic type, cutaways with callout
+labels, a color lineup, an end card, and an original soundtrack composed in code and
+synced to the picture. Output is a 1080p MP4 with audio.
 
-Describe your product, and Claude writes the copy, storyboards the shots and builds
-the video as a single HTML artifact with a player you can scrub. When it's ready,
-one command exports a frame-exact MP4.
+It ships with two finished films that every new film starts from:
 
-**What you get**
-
-- 8 shot types: hook title, punch words, product reveal, count-up stat, feature
-  tiles, split screen, line-by-line statement and end card
-- CSS-drawn phone, tablet, laptop and watch, so a video works with no product photos
-- 16:9, 9:16, 1:1 and 4:5 from the same script
-- Dark and light looks, with brand-color gradients
-- MP4 export through headless Chrome and ffmpeg, with optional music
+- **Oto**: pop. A levitating speaker on flat color fields that change every beat, with a 120 BPM house track.
+- **Vela**: cinematic. A palm-sized projector, studio-lit metal on black, an exploded view and a 100 BPM score.
 
 ## Install
 
-Copy this folder into your skills directory:
-
 ```bash
 git clone https://github.com/aronovdaniel14-cmd/apple-design ~/.claude/skills/apple-design
+cd ~/.claude/skills/apple-design && npm install && python3 -m pip install -r requirements.txt
 ```
 
-On claude.ai, zip the folder and upload it under **Settings → Capabilities → Skills**.
+Needs Google Chrome, ffmpeg, Node 18+ and Python 3 with numpy and scipy.
 
 ## Use
 
-Type `/apple-design` in Claude Code, or just ask Claude something like:
+In Claude Code, type `/apple-design`, or just ask:
 
-> Make an Apple-style launch video for my app Driftwood, a journaling app with
-> 4.9 stars and 200k users. 9:16 for Instagram.
+> Make an Apple-style launch film for my smart water bottle, Drift. It glows when you
+> need to drink. Three colors: Glacier, Moss, Ember.
 
-## Export to MP4
+Claude copies the closest film, models your product, rewrites the shots and the music,
+checks a contact sheet, and renders the MP4.
 
-Needs Node 18+, Google Chrome and ffmpeg.
+## Render the examples yourself
 
 ```bash
-cd ~/.claude/skills/apple-design && npm install
-node scripts/export.mjs path/to/my-reel.html --out my-reel.mp4
+python3 films/oto/music.py
+node render.mjs oto sheet      # 8-frame contact sheet in films/oto/out/
+node render.mjs oto final      # Oto_Launch_Film.mp4, about 4 minutes at 60 fps
 ```
 
-| Option | Does |
-|---|---|
-| `--aspect 9:16` | Render in another format without editing the file |
-| `--fps 60` | Frame rate (default 30) |
-| `--audio track.mp3` | Add music, trimmed to length with a fade out |
-| `--from 4 --to 9` | Render one section |
-| `--png` | Lossless frames |
-
-## Edit by hand
-
-Open the HTML file and change the `VIDEO` object at the top of the script. Every
-scene type and field is listed in [references/scene-types.md](references/scene-types.md).
-Wrap a word in `*asterisks*` to give it the accent gradient.
+`node render.mjs <film> stills 4,9.5,17` renders exact seconds. `final 30` renders a faster 30 fps draft.
 
 ## Note
 
-"Apple-style" describes a look. Don't use Apple's logos, trademarks, product
-names or fonts in your videos. The template uses Inter, a free font.
+"Apple-style" describes the look. Don't use Apple's logos, trademarks, product names or
+fonts. The films use Inter and Inter Tight.
 
 MIT License.
